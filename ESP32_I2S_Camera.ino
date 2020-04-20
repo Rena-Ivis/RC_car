@@ -68,7 +68,7 @@ void setup() {
   pinMode(motor1Pin2, OUTPUT);
   pinMode(motor2Pin1, OUTPUT);
   pinMode(motor2Pin2, OUTPUT);
-
+  
   // задаем настройки ШИМ-канала:
   ledcSetup(pwmChannel, freq, resolution);
   
@@ -80,7 +80,6 @@ void setup() {
   // подаем на контакты ENA и ENB 
   // ШИМ-сигнал с коэффициентом заполнения «0»:
   ledcWrite(pwmChannel, dutyCycle);
-
   WiFi.softAP("ESP32-Robot");
 
   IPAddress IP = WiFi.softAPIP();
@@ -93,6 +92,10 @@ void setup() {
   tft.initR(INITR_BLACKTAB);
   tft.fillScreen(0);
   server.begin();
+
+  Serial.print("setup() running on core ");
+           //  "Блок setup() выполняется на ядре "
+  Serial.println(xPortGetCoreID());
 }
 
 void displayRGB565(unsigned char * frame, int xres, int yres){
@@ -105,10 +108,72 @@ void displayRGB565(unsigned char * frame, int xres, int yres){
     }  
 }
 
-void loop(){
-//  camera->oneFrame();
-////  serve();
-//  displayRGB565(camera->frame, camera->xres, camera->yres);
+void motorDrive(){
+         if (header.indexOf("GET /forward") >= 0) {
+              digitalWrite(motor1Pin1, LOW);
+              digitalWrite(motor1Pin2, HIGH); 
+              digitalWrite(motor2Pin1, LOW);
+              digitalWrite(motor2Pin2, HIGH);
+              Serial.println("Forward");  //  "Вперед"
+            }  else if (header.indexOf("GET /left") >= 0) {
+              digitalWrite(motor1Pin1, LOW); 
+              digitalWrite(motor1Pin2, LOW); 
+              digitalWrite(motor2Pin1, LOW);
+              digitalWrite(motor2Pin2, HIGH); 
+              Serial.println("Left");  //  "Влево"
+            }  else if (header.indexOf("GET /stop") >= 0) {
+              digitalWrite(motor1Pin1, LOW); 
+              digitalWrite(motor1Pin2, LOW); 
+              digitalWrite(motor2Pin1, LOW);
+              digitalWrite(motor2Pin2, LOW);
+              Serial.println("Stop");  //  "Стоп"            
+            } else if (header.indexOf("GET /right") >= 0) {
+              digitalWrite(motor1Pin1, LOW); 
+              digitalWrite(motor1Pin2, HIGH); 
+              digitalWrite(motor2Pin1, LOW);
+              digitalWrite(motor2Pin2, LOW);   
+              Serial.println("Right");  //  "Вправо" 
+            } else if (header.indexOf("GET /reverse") >= 0) {
+              digitalWrite(motor1Pin1, HIGH);
+              digitalWrite(motor1Pin2, LOW); 
+              digitalWrite(motor2Pin1, HIGH);
+              digitalWrite(motor2Pin2, LOW);  
+              Serial.println("Reverse");  //  "Назад"         
+            }
+//            else if(header.indexOf("GET /camera") >= 0)
+//        {
+////            client.println("HTTP/1.1 200 OK");
+////            client.println("Content-type:image/bmp");
+////            client.println();
+//            
+////            client.write(bmpHeader, BMP::headerSize);
+////            client.write(camera->frame, camera->xres * camera->yres * 2);
+//        }
+
+        if(header.indexOf("GET /?value=")>=0) {
+              pos1 = header.indexOf('=');
+              pos2 = header.indexOf('&');
+              valueString = header.substring(pos1+1, pos2);
+              // Задаем скорость мотора:
+              if (valueString == "0") {
+                ledcWrite(pwmChannel, 0);
+                digitalWrite(motor1Pin1, LOW); 
+                digitalWrite(motor1Pin2, LOW); 
+                digitalWrite(motor2Pin1, LOW);
+                digitalWrite(motor2Pin2, LOW);   
+              }
+              else { 
+                dutyCycle = map(valueString.toInt(), 25, 100, 200, 255);
+                ledcWrite(pwmChannel, dutyCycle);
+                Serial.println(valueString);
+              } 
+            }         
+                  Serial.print("MOTOR\n");
+}
+
+void htmlShow(){
+    // Очищаем переменную «header»:
+    header = "";
   WiFiClient client = server.available();  // Запускаем прослушку 
                                            // входящих клиентов.
   if (client) {                            // Если подключился 
@@ -147,46 +212,7 @@ void loop(){
             
             // Этот код отвечает за управление контактами моторов
             // согласно тому, какие нажаты кнопки на веб-странице:
-            if (header.indexOf("GET /forward") >= 0) {
-              Serial.println("Forward");  //  "Вперед"
-              digitalWrite(motor1Pin1, LOW);
-              digitalWrite(motor1Pin2, HIGH); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, HIGH);
-            }  else if (header.indexOf("GET /left") >= 0) {
-              Serial.println("Left");  //  "Влево"
-              digitalWrite(motor1Pin1, LOW); 
-              digitalWrite(motor1Pin2, LOW); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, HIGH);
-            }  else if (header.indexOf("GET /stop") >= 0) {
-              Serial.println("Stop");  //  "Стоп"
-              digitalWrite(motor1Pin1, LOW); 
-              digitalWrite(motor1Pin2, LOW); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, LOW);             
-            } else if (header.indexOf("GET /right") >= 0) {
-              Serial.println("Right");  //  "Вправо"
-              digitalWrite(motor1Pin1, LOW); 
-              digitalWrite(motor1Pin2, HIGH); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, LOW);    
-            } else if (header.indexOf("GET /reverse") >= 0) {
-              Serial.println("Reverse");  //  "Назад"
-              digitalWrite(motor1Pin1, HIGH);
-              digitalWrite(motor1Pin2, LOW); 
-              digitalWrite(motor2Pin1, HIGH);
-              digitalWrite(motor2Pin2, LOW);          
-            }
-//            else if(header.indexOf("GET /camera") >= 0)
-//        {
-////            client.println("HTTP/1.1 200 OK");
-////            client.println("Content-type:image/bmp");
-////            client.println();
-//            
-////            client.write(bmpHeader, BMP::headerSize);
-////            client.write(camera->frame, camera->xres * camera->yres * 2);
-//        }
+
             // Показываем веб-страницу:
 
             client.println("<!DOCTYPE HTML><html>");
@@ -231,24 +257,10 @@ void loop(){
             
             // Пример HTTP-запроса: «GET /?value=100& HTTP/1.1»;
             // Он задает коэффициент заполнения ШИМ на 100% (255):
-            if(header.indexOf("GET /?value=")>=0) {
-              pos1 = header.indexOf('=');
-              pos2 = header.indexOf('&');
-              valueString = header.substring(pos1+1, pos2);
-              // Задаем скорость мотора:
-              if (valueString == "0") {
-                ledcWrite(pwmChannel, 0);
-                digitalWrite(motor1Pin1, LOW); 
-                digitalWrite(motor1Pin2, LOW); 
-                digitalWrite(motor2Pin1, LOW);
-                digitalWrite(motor2Pin2, LOW);   
-              }
-              else { 
-                dutyCycle = map(valueString.toInt(), 25, 100, 200, 255);
-                ledcWrite(pwmChannel, dutyCycle);
-                Serial.println(valueString);
-              } 
-            }         
+
+
+
+             
             // HTTP-ответ заканчивается еще одной пустой строкой:
             client.println();
             // Выходим из цикла while():
@@ -264,12 +276,19 @@ void loop(){
         }
       }
     }
-    // Очищаем переменную «header»:
-    header = "";
+
     // Отключаем соединение:
     client.stop();
     Serial.println("Client disconnected.");  // "Клиент отключен."
     Serial.println("");
   }
-  
+      Serial.print("HTML\n");
+}
+
+void loop(){
+//  camera->oneFrame();
+////  serve();
+//  displayRGB565(camera->frame, camera->xres, camera->yres);
+    htmlShow();
+    motorDrive();
 }
