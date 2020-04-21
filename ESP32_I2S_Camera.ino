@@ -40,19 +40,23 @@ unsigned char bmpHeader[BMP::headerSize];
 // переменная для хранения HTTP-запроса:
 String header;
 
+
 // мотор 1:
-#define motor1Pin1 23
-#define motor1Pin2 19
-#define enable1Pin 0
+int motor1Pin1 = 23; 
+int motor1Pin2 = 19; 
 
 // мотор 2:
-#define motor2Pin1 18 
-#define motor2Pin2 25
-#define enable2Pin 26
+int motor2Pin1 = 18; 
+int motor2Pin2 = 25; 
 
 // переменные для свойств широтно-импульсной модуляции (ШИМ):
 const int freq = 30000;
-const int pwmChannel = 0;
+
+const int pwmChannel0 = 0;
+const int pwmChannel1 = 1;
+const int pwmChannel2 = 2;
+const int pwmChannel3 = 3;
+
 const int resolution = 8;
 int dutyCycle = 0;
 
@@ -63,23 +67,25 @@ int pos2 = 0;
 
 void setup() {
   Serial.begin(115200);
-// переключаем контакты моторов в режим «OUTPUT»:
-  pinMode(motor1Pin1, OUTPUT);
-  pinMode(motor1Pin2, OUTPUT);
-  pinMode(motor2Pin1, OUTPUT);
-  pinMode(motor2Pin2, OUTPUT);
-  
   // задаем настройки ШИМ-канала:
-  ledcSetup(pwmChannel, freq, resolution);
+  ledcSetup(pwmChannel0, freq, resolution);
+  ledcSetup(pwmChannel1, freq, resolution);
+  ledcSetup(pwmChannel2, freq, resolution);
+  ledcSetup(pwmChannel3, freq, resolution);
   
   // подключаем ШИМ-канал 0 к контактам ENA и ENB,
   // т.е. к GPIO-контактам для управления скоростью вращения моторов:
-  ledcAttachPin(enable1Pin, pwmChannel);
-  ledcAttachPin(enable2Pin, pwmChannel);
-
+  ledcAttachPin(motor1Pin1, pwmChannel0);
+  ledcAttachPin(motor1Pin2, pwmChannel1);
+  ledcAttachPin(motor2Pin1, pwmChannel2);
+  ledcAttachPin(motor2Pin2, pwmChannel3);
   // подаем на контакты ENA и ENB 
   // ШИМ-сигнал с коэффициентом заполнения «0»:
-  ledcWrite(pwmChannel, dutyCycle);
+  ledcWrite(pwmChannel0, dutyCycle);
+  ledcWrite(pwmChannel1, dutyCycle);
+  ledcWrite(pwmChannel2, dutyCycle);
+  ledcWrite(pwmChannel3, dutyCycle);
+  
   WiFi.softAP("ESP32-Robot");
 
   IPAddress IP = WiFi.softAPIP();
@@ -92,10 +98,6 @@ void setup() {
   tft.initR(INITR_BLACKTAB);
   tft.fillScreen(0);
   server.begin();
-
-  Serial.print("setup() running on core ");
-           //  "Блок setup() выполняется на ядре "
-  Serial.println(xPortGetCoreID());
 }
 
 void displayRGB565(unsigned char * frame, int xres, int yres){
@@ -108,47 +110,48 @@ void displayRGB565(unsigned char * frame, int xres, int yres){
     }  
 }
 
-void motorDrive(){
+void motorDrive(WiFiClient client){
          if (header.indexOf("GET /forward") >= 0) {
-              digitalWrite(motor1Pin1, LOW);
-              digitalWrite(motor1Pin2, HIGH); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, HIGH);
+              ledcWrite(pwmChannel0, 0);
+              ledcWrite(pwmChannel1, dutyCycle); 
+              ledcWrite(pwmChannel2, 0);
+              ledcWrite(pwmChannel3, dutyCycle);
               Serial.println("Forward");  //  "Вперед"
             }  else if (header.indexOf("GET /left") >= 0) {
-              digitalWrite(motor1Pin1, LOW); 
-              digitalWrite(motor1Pin2, LOW); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, HIGH); 
+              ledcWrite(pwmChannel0, 0);
+              ledcWrite(pwmChannel1, 0);
+              ledcWrite(pwmChannel2, 0);
+              ledcWrite(pwmChannel3, dutyCycle); 
               Serial.println("Left");  //  "Влево"
             }  else if (header.indexOf("GET /stop") >= 0) {
-              digitalWrite(motor1Pin1, LOW); 
-              digitalWrite(motor1Pin2, LOW); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, LOW);
+              ledcWrite(pwmChannel0, 0);
+              ledcWrite(pwmChannel1, 0);
+              ledcWrite(pwmChannel2, 0);
+              ledcWrite(pwmChannel3, 0);
               Serial.println("Stop");  //  "Стоп"            
             } else if (header.indexOf("GET /right") >= 0) {
-              digitalWrite(motor1Pin1, LOW); 
-              digitalWrite(motor1Pin2, HIGH); 
-              digitalWrite(motor2Pin1, LOW);
-              digitalWrite(motor2Pin2, LOW);   
+              ledcWrite(pwmChannel0, 0);
+              ledcWrite(pwmChannel1, dutyCycle);
+              ledcWrite(pwmChannel2, 0);
+              ledcWrite(pwmChannel3, 0); 
               Serial.println("Right");  //  "Вправо" 
             } else if (header.indexOf("GET /reverse") >= 0) {
-              digitalWrite(motor1Pin1, HIGH);
-              digitalWrite(motor1Pin2, LOW); 
-              digitalWrite(motor2Pin1, HIGH);
-              digitalWrite(motor2Pin2, LOW);  
+              ledcWrite(pwmChannel0, dutyCycle);
+              ledcWrite(pwmChannel1, 0);
+              ledcWrite(pwmChannel2, dutyCycle);
+              ledcWrite(pwmChannel3, 0);
               Serial.println("Reverse");  //  "Назад"         
             }
-//            else if(header.indexOf("GET /camera") >= 0)
-//        {
-////            client.println("HTTP/1.1 200 OK");
-////            client.println("Content-type:image/bmp");
-////            client.println();
-//            
-////            client.write(bmpHeader, BMP::headerSize);
-////            client.write(camera->frame, camera->xres * camera->yres * 2);
-//        }
+            //обновление кадра
+            else if(header.indexOf("GET /camera") >= 0)
+        {
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:image/bmp");
+            client.println();
+            
+            client.write(bmpHeader, BMP::headerSize);
+            client.write(camera->frame, camera->xres * camera->yres * 2);
+        }
 
         if(header.indexOf("GET /?value=")>=0) {
               pos1 = header.indexOf('=');
@@ -156,19 +159,20 @@ void motorDrive(){
               valueString = header.substring(pos1+1, pos2);
               // Задаем скорость мотора:
               if (valueString == "0") {
-                ledcWrite(pwmChannel, 0);
-                digitalWrite(motor1Pin1, LOW); 
-                digitalWrite(motor1Pin2, LOW); 
-                digitalWrite(motor2Pin1, LOW);
-                digitalWrite(motor2Pin2, LOW);   
+                ledcWrite(pwmChannel0, dutyCycle);
+                ledcWrite(pwmChannel1, dutyCycle);
+                ledcWrite(pwmChannel2, dutyCycle);
+                ledcWrite(pwmChannel3, dutyCycle);  
               }
               else { 
                 dutyCycle = map(valueString.toInt(), 25, 100, 200, 255);
-                ledcWrite(pwmChannel, dutyCycle);
+                ledcWrite(pwmChannel0, dutyCycle);
+                ledcWrite(pwmChannel1, dutyCycle);
+                ledcWrite(pwmChannel2, dutyCycle);
+                ledcWrite(pwmChannel3, dutyCycle);
                 Serial.println(valueString);
               } 
             }         
-                  Serial.print("MOTOR\n");
 }
 
 void htmlShow(){
@@ -212,15 +216,15 @@ void htmlShow(){
             
             // Этот код отвечает за управление контактами моторов
             // согласно тому, какие нажаты кнопки на веб-странице:
-
+              motorDrive(client);
             // Показываем веб-страницу:
 
             client.println("<!DOCTYPE HTML><html>");
+            //изображение с камеры
+            client.println("<style>body{margin: 0}\nimg{height: 100%; width: auto}</style>"
+              "<img id='a' src='/camera' onload='this.style.display=\"initial\"; var b = document.getElementById(\"b\"); b.style.display=\"none\"; b.src=\"camera?\"+Date.now(); '>"
+              "<img id='b' style='display: none' src='/camera' onload='this.style.display=\"initial\"; var a = document.getElementById(\"a\"); a.style.display=\"none\"; a.src=\"camera?\"+Date.now(); '>");
             
-//            client.println("<style>body{margin: 0}\nimg{height: 100%; width: auto}</style>"
-//              "<img id='a' src='/camera' onload='this.style.display=\"initial\"; var b = document.getElementById(\"b\"); b.style.display=\"none\"; b.src=\"camera?\"+Date.now(); '>"
-//              "<img id='b' style='display: none' src='/camera' onload='this.style.display=\"initial\"; var a = document.getElementById(\"a\"); a.style.display=\"none\"; a.src=\"camera?\"+Date.now(); '>");
-//            
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
             // При помощи CSS задаем стиль кнопок.
@@ -282,13 +286,12 @@ void htmlShow(){
     Serial.println("Client disconnected.");  // "Клиент отключен."
     Serial.println("");
   }
-      Serial.print("HTML\n");
 }
 
+
 void loop(){
-//  camera->oneFrame();
-////  serve();
-//  displayRGB565(camera->frame, camera->xres, camera->yres);
+  //с ними перестает норм работать....
+  camera->oneFrame();
+  displayRGB565(camera->frame, camera->xres, camera->yres);
     htmlShow();
-    motorDrive();
 }
